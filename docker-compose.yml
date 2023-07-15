@@ -1,0 +1,80 @@
+version: '3.9'
+services:
+  localstack:
+    container_name: localstack_main
+    image: localstack/localstack
+    ports:
+      - "4566:4566"
+      - "4571:4571"
+    networks:
+      dev_ops:
+        ipv4_address: 172.21.0.2
+    environment:
+      - SERVICES=${SERVICES-acm,apigateway
+          ,cloudformation,cloudwatch,dynamodb
+          ,dynamodbstreams,ec2,es,events
+          ,firehose,iam,kinesis,kms,lambda,rds
+          ,route53,s3,s3api,secretsmanager,ses,sns
+          ,sqs,ssm,stepfunctions,sts}
+      - DEBUG=${DEBUG-}
+      - ENFORCE_IAM=1
+    volumes:
+      #- "${TMPDIR:-/tmp/localstack}:/tmp/localstack"
+      - ./docker/localstack:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "localstack:172.21.0.2"
+      - "jenkins_master:172.21.0.3"
+      - "github_local:172.21.0.4"
+  
+  github_local:
+    image: gogs/gogs
+    container_name: github_local
+    volumes:
+      #- /tmp/gogs/data:/data
+      - ./docker/gogs/data:/data
+    ports:
+      - "10022:22"
+      - "10080:3000"
+    networks:
+      dev_ops:
+        ipv4_address: 172.21.0.4
+    extra_hosts:
+      - "localstack:172.21.0.2"
+      - "jenkins_master:172.21.0.3"
+      - "github_local:172.21.0.4"  
+  
+  jenkins_master:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: jenkins_master
+    depends_on:
+      - localstack
+      - github_local
+    volumes:
+      #- /tmp/jenkins_home:/var/jenkins_home
+      - ./docker/jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - $HOME/.aws/:/var/jenkins_home/.aws
+    links:
+      - localstack
+      - github_local
+    networks:
+      dev_ops:
+        ipv4_address: 172.21.0.3
+    ports:
+      - "8000:8080"
+      - "50000:50000"
+    extra_hosts:
+      - "localstack:172.21.0.2"
+      - "jenkins_master:172.21.0.3"
+      - "github_local:172.21.0.4" 
+
+networks:
+  dev_ops:
+    ipam:
+      driver: default
+      config: 
+        - subnet: "172.21.0.0/24"
+          gateway: 172.21.0.1
